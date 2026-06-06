@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+dist/
+.pytest_cache/
+
+# Secrets — never commit
+.env
+
+# Local uploads (use Supabase Storage in production)
+backend/uploads/
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.env
+
+# macOS
+.DS_Store
+
+# IDE (settings.json has the local interpreter path — don't share it)
+.vscode/settings.json
