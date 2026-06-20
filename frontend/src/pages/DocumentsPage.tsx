@@ -7,7 +7,7 @@ const API = 'http://localhost:8000'
 type Document = {
   id: string
   filename: string
-  size: number
+  size_bytes: number
   status: 'pending' | 'processing' | 'ready' | 'error'
 }
 
@@ -88,7 +88,7 @@ export default function DocumentsPage() {
             <li key={doc.id} className="flex items-center justify-between px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
-                <p className="text-xs text-gray-400">{formatSize(doc.size)}</p>
+                <p className="text-xs text-gray-400">{formatSize(doc.size_bytes)}</p>
               </div>
               <div className="flex items-center gap-3 ml-4">
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${badgeStyle[doc.status]}`}>
