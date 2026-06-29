@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.db.database import get_pool
+from app.worker.processor import process_document
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -22,7 +23,7 @@ class DocumentOut(BaseModel):
 
 
 @router.post("/", response_model=DocumentOut, status_code=201)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
 
@@ -51,6 +52,8 @@ async def upload_document(file: UploadFile = File(...)):
         str(file_path),
         size_bytes,
     )
+
+    background_tasks.add_task(process_document, doc_id)
 
     return DocumentOut(
         id=row["id"],
