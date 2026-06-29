@@ -22,6 +22,7 @@ class ConversationOut(BaseModel):
 
 class MessageIn(BaseModel):
     question: str
+    document_ids: list[UUID] | None = None  # if None, search all documents
 
 
 class SourceChunk(BaseModel):
@@ -71,17 +72,32 @@ async def ask_question(conversation_id: UUID, body: MessageIn):
     q_vector_str = f"[{','.join(str(x) for x in q_vector)}]"
 
     # Find top-K most relevant chunks via cosine similarity
-    chunk_rows = await pool.fetch(
-        """
-        SELECT c.id, c.content, c.page_number, d.filename
-        FROM chunks c
-        JOIN documents d ON d.id = c.document_id
-        ORDER BY c.embedding <=> $1::vector
-        LIMIT $2
-        """,
-        q_vector_str,
-        TOP_K,
-    )
+    if body.document_ids:
+        chunk_rows = await pool.fetch(
+            """
+            SELECT c.id, c.content, c.page_number, d.filename
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            WHERE c.document_id = ANY($2::uuid[])
+            ORDER BY c.embedding <=> $1::vector
+            LIMIT $3
+            """,
+            q_vector_str,
+            body.document_ids,
+            TOP_K,
+        )
+    else:
+        chunk_rows = await pool.fetch(
+            """
+            SELECT c.id, c.content, c.page_number, d.filename
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            ORDER BY c.embedding <=> $1::vector
+            LIMIT $2
+            """,
+            q_vector_str,
+            TOP_K,
+        )
 
     if not chunk_rows:
         raise HTTPException(
