@@ -1,43 +1,149 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import axios from 'axios'
+
+const API = 'http://localhost:8000'
+
+type Document = {
+  id: string
+  filename: string
+  status: string
+}
+
+type Source = {
+  chunk_id: string
+  filename: string
+  page_number: number
+}
 
 type Message = {
   id: string
+  role: 'user' | 'assistant'
   text: string
+  sources?: Source[]
 }
 
 export default function ChatPage() {
+  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set())
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  const { data: documents = [] } = useQuery<Document[]>({
+    queryKey: ['documents'],
+    queryFn: () => axios.get(`${API}/documents/`).then(r => r.data),
+  })
+
+  const readyDocs = documents.filter(d => d.status === 'ready')
+
+  const ask = useMutation({
+    mutationFn: async (question: string) => {
+      let convId = conversationId
+      if (!convId) {
+        const res = await axios.post(`${API}/conversations/`)
+        convId = res.data.id
+        setConversationId(convId)
+      }
+      const body: { question: string; document_ids?: string[] } = { question }
+      if (selectedDocs.size > 0) {
+        body.document_ids = Array.from(selectedDocs)
+      }
+      const res = await axios.post(`${API}/conversations/${convId}/messages`, body)
+      return res.data
+    },
+    onSuccess: data => {
+      setMessages(prev => [
+        ...prev,
+        { id: data.id, role: 'assistant', text: data.content, sources: data.sources },
+      ])
+    },
+  })
 
   function handleSend() {
     const text = input.trim()
-    if (!text) return
-
-    console.log('Sending message:', text)
-    setMessages(prev => [...prev, { id: crypto.randomUUID(), text }])
+    if (!text || ask.isPending) return
+    setMessages(prev => [...prev, { id: crypto.randomUUID(), role: 'user', text }])
     setInput('')
+    ask.mutate(text)
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Enter') handleSend()
   }
 
+  function toggleDoc(id: string) {
+    setSelectedDocs(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
   return (
     <div className="max-w-3xl mx-auto p-8 flex flex-col h-[calc(100vh-64px)]">
       <h1 className="text-2xl font-bold text-gray-900 mb-4">Chat</h1>
 
-      <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-gray-200 p-4 mb-4">
+      {readyDocs.length > 0 && (
+        <div className="mb-4 p-3 bg-white border border-gray-200 rounded-xl">
+          <p className="text-xs text-gray-500 font-medium mb-2">
+            Search in: {selectedDocs.size === 0 ? 'all documents' : `${selectedDocs.size} selected`}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {readyDocs.map(doc => (
+              <label key={doc.id} className="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedDocs.has(doc.id)}
+                  onChange={() => toggleDoc(doc.id)}
+                  className="accent-indigo-600"
+                />
+                <span className="truncate max-w-xs">{doc.filename}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto bg-white rounded-xl border border-gray-200 p-4 mb-4 space-y-3">
         {messages.length === 0 ? (
           <p className="text-gray-400 text-sm">Ask a question to get started.</p>
         ) : (
-          <ul className="space-y-3">
-            {messages.map(msg => (
-              <li key={msg.id} className="text-sm text-gray-900 bg-gray-100 rounded-lg px-3 py-2 inline-block">
+          messages.map(msg => (
+            <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div
+                className={`px-3 py-2 rounded-lg text-sm max-w-[80%] whitespace-pre-wrap ${
+                  msg.role === 'user'
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-gray-100 text-gray-900'
+                }`}
+              >
                 {msg.text}
-              </li>
-            ))}
-          </ul>
+              </div>
+              {msg.sources && msg.sources.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {msg.sources.slice(0, 3).map(s => (
+                    <p key={s.chunk_id} className="text-xs text-gray-400">
+                      📄 {s.filename} — page {s.page_number}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))
         )}
+        {ask.isPending && (
+          <div className="flex items-start">
+            <div className="bg-gray-100 text-gray-500 px-3 py-2 rounded-lg text-sm">
+              Thinking…
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
       </div>
 
       <div className="flex gap-2">
@@ -51,9 +157,14 @@ export default function ChatPage() {
         />
         <button
           onClick={handleSend}
-          className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+          disabled={ask.isPending || !input.trim()}
+          className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors min-w-[72px] flex items-center justify-center"
         >
-          Send
+          {ask.isPending ? (
+            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          ) : (
+            'Send'
+          )}
         </button>
       </div>
     </div>
