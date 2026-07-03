@@ -1,35 +1,44 @@
-import { useState } from 'react'
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom'
+import { Toaster } from 'react-hot-toast'
+import HomePage from './pages/HomePage'
 import DocumentsPage from './pages/DocumentsPage'
 import ChatPage from './pages/ChatPage'
 
-type Tab = 'documents' | 'chat'
-
-export default function App() {
-  const [tab, setTab] = useState<Tab>('documents')
-
+function Nav() {
+  const location = useLocation()
   const base = 'px-4 py-2 text-sm font-medium rounded-lg transition-colors'
   const active = 'bg-indigo-600 text-white'
   const inactive = 'text-gray-600 hover:bg-gray-100'
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
-        <span className="font-bold text-gray-900 mr-4">AskTheDocs</span>
-        <button
-          className={`${base} ${tab === 'documents' ? active : inactive}`}
-          onClick={() => setTab('documents')}
-        >
-          Documents
-        </button>
-        <button
-          className={`${base} ${tab === 'chat' ? active : inactive}`}
-          onClick={() => setTab('chat')}
-        >
-          Chat
-        </button>
-      </nav>
+    <nav className="bg-white border-b border-gray-200 px-6 py-3 flex items-center gap-3">
+      <Link to="/" className="font-bold text-gray-900 mr-4 hover:text-indigo-600 transition-colors">
+        AskTheDocs
+      </Link>
+      <Link to="/documents" className={`${base} ${location.pathname === '/documents' ? active : inactive}`}>
+        Documents
+      </Link>
+      <Link to="/chat" className={`${base} ${location.pathname === '/chat' ? active : inactive}`}>
+        Chat
+      </Link>
+    </nav>
+  )
+}
 
-      <main>{tab === 'documents' ? <DocumentsPage /> : <ChatPage />}</main>
-    </div>
+export default function App() {
+  return (
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-50">
+        <Nav />
+        <main>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/documents" element={<DocumentsPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+          </Routes>
+        </main>
+        <Toaster position="bottom-right" toastOptions={{ duration: 3000 }} />
+      </div>
+    </BrowserRouter>
   )
 }
