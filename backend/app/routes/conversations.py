@@ -11,7 +11,7 @@ router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 
-TOP_K = 5
+TOP_K = 3
 
 
 class ConversationOut(BaseModel):

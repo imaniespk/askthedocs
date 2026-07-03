@@ -1,6 +1,8 @@
+from pathlib import Path
 from uuid import UUID
 
 import pdfplumber
+from docx import Document as DocxDocument
 from openai import AsyncOpenAI
 
 from app.config import settings
@@ -20,6 +22,35 @@ def _split_chunks(text: str) -> list[str]:
     ]
 
 
+def _extract_text(storage_path: str) -> list[tuple[str, int]]:
+    path = Path(storage_path)
+    suffix = path.suffix.lower()
+    chunks: list[tuple[str, int]] = []
+
+    if suffix == ".pdf":
+        with pdfplumber.open(storage_path) as pdf:
+            for page_num, page in enumerate(pdf.pages, start=1):
+                text = page.extract_text() or ""
+                for chunk in _split_chunks(text):
+                    if chunk.strip():
+                        chunks.append((chunk, page_num))
+
+    elif suffix == ".docx":
+        doc = DocxDocument(storage_path)
+        full_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        for chunk in _split_chunks(full_text):
+            if chunk.strip():
+                chunks.append((chunk, 1))
+
+    elif suffix == ".txt":
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for chunk in _split_chunks(text):
+            if chunk.strip():
+                chunks.append((chunk, 1))
+
+    return chunks
+
+
 async def process_document(document_id: UUID) -> None:
     pool = await get_pool()
 
@@ -33,13 +64,7 @@ async def process_document(document_id: UUID) -> None:
             "SELECT storage_path FROM documents WHERE id = $1", document_id
         )
 
-        chunks: list[tuple[str, int]] = []
-        with pdfplumber.open(row["storage_path"]) as pdf:
-            for page_num, page in enumerate(pdf.pages, start=1):
-                text = page.extract_text() or ""
-                for chunk_text in _split_chunks(text):
-                    if chunk_text.strip():
-                        chunks.append((chunk_text, page_num))
+        chunks = _extract_text(row["storage_path"])
 
         if not chunks:
             await pool.execute(

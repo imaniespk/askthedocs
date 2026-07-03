@@ -24,8 +24,9 @@ class DocumentOut(BaseModel):
 
 @router.post("/", response_model=DocumentOut, status_code=201)
 async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported.")
+    allowed = (".pdf", ".docx", ".txt")
+    if not any(file.filename.lower().endswith(ext) for ext in allowed):
+        raise HTTPException(status_code=400, detail="Only PDF, DOCX, and TXT files are supported.")
 
     content = await file.read()
     size_bytes = len(content)
@@ -37,7 +38,8 @@ async def upload_document(background_tasks: BackgroundTasks, file: UploadFile = 
         )
 
     doc_id = uuid4()
-    file_path = UPLOAD_DIR / f"{doc_id}.pdf"
+    suffix = Path(file.filename).suffix.lower()
+    file_path = UPLOAD_DIR / f"{doc_id}{suffix}"
     file_path.write_bytes(content)
 
     pool = await get_pool()
