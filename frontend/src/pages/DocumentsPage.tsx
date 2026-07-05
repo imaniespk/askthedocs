@@ -1,8 +1,10 @@
 import { useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import axios from 'axios'
 
 const API = 'http://localhost:8000'
+const ACCEPTED = ['.pdf', '.docx', '.txt']
 
 type Document = {
   id: string
@@ -40,7 +42,17 @@ export default function DocumentsPage() {
       form.append('file', file)
       return axios.post(`${API}/documents/`, form)
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Document uploaded successfully!')
+    },
+    onError: (err: unknown) => {
+      const msg =
+        axios.isAxiosError(err) && err.response?.data?.detail
+          ? err.response.data.detail
+          : 'Upload failed. Please try again.'
+      toast.error(msg)
+    },
   })
 
   const remove = useMutation({
@@ -50,7 +62,14 @@ export default function DocumentsPage() {
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (file) upload.mutate(file)
+    if (!file) return
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    if (!ACCEPTED.includes(ext)) {
+      toast.error('Only PDF, DOCX, and TXT files are supported.')
+      e.target.value = ''
+      return
+    }
+    upload.mutate(file)
     e.target.value = ''
   }
 
@@ -63,25 +82,21 @@ export default function DocumentsPage() {
           disabled={upload.isPending}
           className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
-          {upload.isPending ? 'Uploading…' : 'Upload PDF'}
+          {upload.isPending ? 'Uploading…' : 'Upload File'}
         </button>
         <input
           ref={fileRef}
           type="file"
-          accept=".pdf"
+          accept=".pdf,.docx,.txt"
           className="hidden"
           onChange={handleFileChange}
         />
       </div>
 
-      {upload.isError && (
-        <p className="text-red-600 text-sm mb-4">Upload failed. Please try again.</p>
-      )}
-
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
       ) : documents.length === 0 ? (
-        <p className="text-gray-400 text-sm">No documents yet. Upload a PDF to get started.</p>
+        <p className="text-gray-400 text-sm">No documents yet. Upload a PDF, DOCX, or TXT to get started.</p>
       ) : (
         <ul className="divide-y divide-gray-200 bg-white rounded-xl border border-gray-200">
           {documents.map(doc => (
