@@ -1,11 +1,12 @@
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 
 from app.config import settings
 from app.db.database import get_pool
+from app.dependencies import get_current_user
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -22,7 +23,7 @@ class ConversationOut(BaseModel):
 
 class MessageIn(BaseModel):
     question: str
-    document_ids: list[UUID] | None = None  # if None, search all documents
+    document_ids: list[UUID] | None = None
 
 
 class SourceChunk(BaseModel):
@@ -40,11 +41,30 @@ class MessageOut(BaseModel):
     created_at: str
 
 
+@router.get("/", response_model=list[ConversationOut])
+async def list_conversations(user_id: UUID = Depends(get_current_user)):
+    pool = await get_pool()
+    rows = await pool.fetch(
+        """
+        SELECT id, title, created_at
+        FROM conversations
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        """,
+        user_id,
+    )
+    return [
+        ConversationOut(id=r["id"], title=r["title"], created_at=str(r["created_at"]))
+        for r in rows
+    ]
+
+
 @router.post("/", response_model=ConversationOut, status_code=201)
-async def create_conversation():
+async def create_conversation(user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
     row = await pool.fetchrow(
-        "INSERT INTO conversations DEFAULT VALUES RETURNING id, title, created_at"
+        "INSERT INTO conversations (user_id) VALUES ($1) RETURNING id, title, created_at",
+        user_id,
     )
     return ConversationOut(
         id=row["id"],
@@ -53,17 +73,54 @@ async def create_conversation():
     )
 
 
-@router.post("/{conversation_id}/messages", response_model=MessageOut, status_code=201)
-async def ask_question(conversation_id: UUID, body: MessageIn):
+@router.get("/{conversation_id}/messages", response_model=list[MessageOut])
+async def get_messages(conversation_id: UUID, user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
-
     conv = await pool.fetchrow(
-        "SELECT id FROM conversations WHERE id = $1", conversation_id
+        "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id,
+        user_id,
     )
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found.")
 
-    # Embed the question
+    rows = await pool.fetch(
+        """
+        SELECT id, role, content, created_at
+        FROM messages
+        WHERE conversation_id = $1
+        ORDER BY created_at ASC
+        """,
+        conversation_id,
+    )
+    return [
+        MessageOut(
+            id=r["id"],
+            role=r["role"],
+            content=r["content"],
+            sources=[],
+            created_at=str(r["created_at"]),
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{conversation_id}/messages", response_model=MessageOut, status_code=201)
+async def ask_question(
+    conversation_id: UUID,
+    body: MessageIn,
+    user_id: UUID = Depends(get_current_user),
+):
+    pool = await get_pool()
+
+    conv = await pool.fetchrow(
+        "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id,
+        user_id,
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
     embed_resp = await _openai.embeddings.create(
         model="text-embedding-3-small",
         input=body.question,
@@ -71,7 +128,6 @@ async def ask_question(conversation_id: UUID, body: MessageIn):
     q_vector = embed_resp.data[0].embedding
     q_vector_str = f"[{','.join(str(x) for x in q_vector)}]"
 
-    # Find top-K most relevant chunks via cosine similarity
     if body.document_ids:
         chunk_rows = await pool.fetch(
             """
@@ -92,20 +148,21 @@ async def ask_question(conversation_id: UUID, body: MessageIn):
             SELECT c.id, c.content, c.page_number, d.filename
             FROM chunks c
             JOIN documents d ON d.id = c.document_id
+            WHERE d.user_id = $2
             ORDER BY c.embedding <=> $1::vector
-            LIMIT $2
+            LIMIT $3
             """,
             q_vector_str,
+            user_id,
             TOP_K,
         )
 
     if not chunk_rows:
         raise HTTPException(
             status_code=422,
-            detail="No documents uploaded yet. Please upload a PDF first.",
+            detail="No documents uploaded yet. Please upload a document first.",
         )
 
-    # Build context for the LLM
     context = "\n\n---\n\n".join(
         f"[From: {r['filename']}, page {r['page_number']}]\n{r['content']}"
         for r in chunk_rows
@@ -130,17 +187,12 @@ Answer:"""
     answer = completion.choices[0].message.content.strip()
     found_in_docs = "couldn't find" not in answer.lower()
 
-    # Save user message
     await pool.execute(
-        """
-        INSERT INTO messages (conversation_id, role, content)
-        VALUES ($1, 'user', $2)
-        """,
+        "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
         conversation_id,
         body.question,
     )
 
-    # Save assistant message with source chunk IDs
     source_ids = [r["id"] for r in chunk_rows] if found_in_docs else []
     msg_row = await pool.fetchrow(
         """
