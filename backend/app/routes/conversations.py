@@ -128,6 +128,7 @@ Answer:"""
     )
 
     answer = completion.choices[0].message.content.strip()
+    found_in_docs = "couldn't find" not in answer.lower()
 
     # Save user message
     await pool.execute(
@@ -140,7 +141,7 @@ Answer:"""
     )
 
     # Save assistant message with source chunk IDs
-    source_ids = [r["id"] for r in chunk_rows]
+    source_ids = [r["id"] for r in chunk_rows] if found_in_docs else []
     msg_row = await pool.fetchrow(
         """
         INSERT INTO messages (conversation_id, role, content, source_chunks)
@@ -152,15 +153,19 @@ Answer:"""
         source_ids,
     )
 
-    sources = [
-        SourceChunk(
-            chunk_id=r["id"],
-            filename=r["filename"],
-            page_number=r["page_number"],
-            content=r["content"],
-        )
-        for r in chunk_rows
-    ]
+    sources = (
+        [
+            SourceChunk(
+                chunk_id=r["id"],
+                filename=r["filename"],
+                page_number=r["page_number"],
+                content=r["content"],
+            )
+            for r in chunk_rows
+        ]
+        if found_in_docs
+        else []
+    )
 
     return MessageOut(
         id=msg_row["id"],
