@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import client from '../api/client'
 
 const API = 'http://localhost:8000'
 const ACCEPTED = ['.pdf', '.docx', '.txt']
@@ -32,7 +33,7 @@ export default function DocumentsPage() {
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['documents'],
-    queryFn: () => axios.get(`${API}/documents/`).then(r => r.data),
+    queryFn: () => client.get(`${API}/documents/`).then(r => r.data),
     refetchInterval: 5000,
   })
 
@@ -40,7 +41,7 @@ export default function DocumentsPage() {
     mutationFn: (file: File) => {
       const form = new FormData()
       form.append('file', file)
-      return axios.post(`${API}/documents/`, form)
+      return client.post(`${API}/documents/`, form)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['documents'] })
@@ -56,8 +57,11 @@ export default function DocumentsPage() {
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => axios.delete(`${API}/documents/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+    mutationFn: (id: string) => client.delete(`${API}/documents/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Document deleted.')
+    },
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
