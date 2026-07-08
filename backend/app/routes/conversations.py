@@ -15,6 +15,10 @@ _openai = AsyncOpenAI(api_key=settings.openai_api_key)
 TOP_K = 3
 
 
+class TitleIn(BaseModel):
+    title: str
+
+
 class ConversationOut(BaseModel):
     id: UUID
     title: str | None
@@ -73,6 +77,41 @@ async def create_conversation(user_id: UUID = Depends(get_current_user)):
     )
 
 
+@router.patch("/{conversation_id}/title", response_model=ConversationOut)
+async def update_title(
+    conversation_id: UUID,
+    body: TitleIn,
+    user_id: UUID = Depends(get_current_user),
+):
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        """
+        UPDATE conversations SET title = $1
+        WHERE id = $2 AND user_id = $3
+        RETURNING id, title, created_at
+        """,
+        body.title[:60],
+        conversation_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return ConversationOut(id=row["id"], title=row["title"], created_at=str(row["created_at"]))
+
+
+@router.delete("/{conversation_id}", status_code=204)
+async def delete_conversation(conversation_id: UUID, user_id: UUID = Depends(get_current_user)):
+    pool = await get_pool()
+    row = await pool.fetchrow(
+        "SELECT id FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id,
+        user_id,
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    await pool.execute("DELETE FROM conversations WHERE id = $1", conversation_id)
+
+
 @router.get("/{conversation_id}/messages", response_model=list[MessageOut])
 async def get_messages(conversation_id: UUID, user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
@@ -86,23 +125,46 @@ async def get_messages(conversation_id: UUID, user_id: UUID = Depends(get_curren
 
     rows = await pool.fetch(
         """
-        SELECT id, role, content, created_at
+        SELECT id, role, content, source_chunks, created_at
         FROM messages
         WHERE conversation_id = $1
         ORDER BY created_at ASC
         """,
         conversation_id,
     )
-    return [
-        MessageOut(
-            id=r["id"],
-            role=r["role"],
-            content=r["content"],
-            sources=[],
-            created_at=str(r["created_at"]),
+
+    result = []
+    for r in rows:
+        sources = []
+        if r["source_chunks"]:
+            chunk_rows = await pool.fetch(
+                """
+                SELECT c.id, c.content, c.page_number, d.filename
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE c.id = ANY($1::uuid[])
+                """,
+                r["source_chunks"],
+            )
+            sources = [
+                SourceChunk(
+                    chunk_id=cr["id"],
+                    filename=cr["filename"],
+                    page_number=cr["page_number"],
+                    content=cr["content"],
+                )
+                for cr in chunk_rows
+            ]
+        result.append(
+            MessageOut(
+                id=r["id"],
+                role=r["role"],
+                content=r["content"],
+                sources=sources,
+                created_at=str(r["created_at"]),
+            )
         )
-        for r in rows
-    ]
+    return result
 
 
 @router.post("/{conversation_id}/messages", response_model=MessageOut, status_code=201)
@@ -191,6 +253,13 @@ Answer:"""
         "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
         conversation_id,
         body.question,
+    )
+
+    # Set conversation title from first question
+    await pool.execute(
+        "UPDATE conversations SET title = $1 WHERE id = $2 AND title IS NULL",
+        body.question[:60],
+        conversation_id,
     )
 
     source_ids = [r["id"] for r in chunk_rows] if found_in_docs else []
