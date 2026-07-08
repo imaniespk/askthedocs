@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import axios from 'axios'
 import client from '../api/client'
@@ -29,6 +30,7 @@ const badgeStyle: Record<Document['status'], string> = {
 
 export default function DocumentsPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
@@ -96,6 +98,20 @@ export default function DocumentsPage() {
           onChange={handleFileChange}
         />
       </div>
+
+      {documents.some(d => d.status === 'ready') && (
+        <div className="mb-5 flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+          <p className="text-sm text-indigo-700">
+            {documents.filter(d => d.status === 'ready').length} document{documents.filter(d => d.status === 'ready').length > 1 ? 's' : ''} ready — start asking questions.
+          </p>
+          <button
+            onClick={() => navigate('/chat')}
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+          >
+            Go to Chat →
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>

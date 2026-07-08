@@ -43,7 +43,10 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
+  const [pinnedPreviewId, setPinnedPreviewId] = useState<string | null>(null)
   const [preview, setPreview] = useState<PreviewState | null>(null)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   const pdfBlobRef = useRef<string | null>(null)
 
@@ -72,12 +75,19 @@ export default function ChatPage() {
     loadHistory()
   }, [])
 
-  // Update previewDoc when selectedDocs changes
+  // Update previewDoc when selectedDocs or pinnedPreviewId changes
   useEffect(() => {
-    const firstId = Array.from(selectedDocs)[0]
-    const doc = readyDocs.find(d => d.id === firstId) ?? null
+    const ids = Array.from(selectedDocs)
+    if (ids.length === 0) {
+      setPreviewDoc(null)
+      setPinnedPreviewId(null)
+      return
+    }
+    // Use pinned doc if it's still selected, otherwise fall back to first
+    const targetId = pinnedPreviewId && selectedDocs.has(pinnedPreviewId) ? pinnedPreviewId : ids[0]
+    const doc = readyDocs.find(d => d.id === targetId) ?? null
     setPreviewDoc(doc)
-  }, [selectedDocs, documents])
+  }, [selectedDocs, documents, pinnedPreviewId])
 
   // Fetch preview content when previewDoc changes
   useEffect(() => {
@@ -94,21 +104,29 @@ export default function ChatPage() {
       pdfBlobRef.current = null
     }
 
-    client
-      .get(`${API}/documents/${previewDoc.id}/file`, { responseType: ext === 'pdf' ? 'blob' : 'text' })
-      .then(res => {
-        if (ext === 'pdf') {
+    if (ext === 'pdf') {
+      client
+        .get(`${API}/documents/${previewDoc.id}/file`, { responseType: 'blob' })
+        .then(res => {
           const url = URL.createObjectURL(res.data)
           pdfBlobRef.current = url
           setPreview({ type: 'pdf', url })
-        } else if (ext === 'docx') {
-          const clean = DOMPurify.sanitize(res.data as string)
+        })
+        .catch(() => setPreview({ type: 'error' }))
+    } else if (ext === 'docx') {
+      client
+        .get(`${API}/documents/${previewDoc.id}/content`)
+        .then(res => {
+          const clean = DOMPurify.sanitize(res.data.content as string)
           setPreview({ type: 'docx', html: clean })
-        } else {
-          setPreview({ type: 'txt', content: res.data as string })
-        }
-      })
-      .catch(() => setPreview({ type: 'error' }))
+        })
+        .catch(() => setPreview({ type: 'error' }))
+    } else {
+      client
+        .get(`${API}/documents/${previewDoc.id}/file`, { responseType: 'text' })
+        .then(res => setPreview({ type: 'txt', content: res.data as string }))
+        .catch(() => setPreview({ type: 'error' }))
+    }
 
     return () => {
       if (pdfBlobRef.current) {
@@ -163,6 +181,31 @@ export default function ChatPage() {
     setMessages([])
   }
 
+  async function handleRename(id: string, newTitle: string) {
+    if (!newTitle.trim()) return
+    try {
+      const res = await client.patch(`${API}/conversations/${id}/title`, { title: newTitle.trim() })
+      setConversations(prev => prev.map(c => c.id === id ? { ...c, title: res.data.title } : c))
+    } catch {
+      // ignore
+    } finally {
+      setRenamingId(null)
+    }
+  }
+
+  async function handleDeleteConversation(id: string) {
+    try {
+      await client.delete(`${API}/conversations/${id}`)
+      setConversations(prev => prev.filter(c => c.id !== id))
+      if (conversationId === id) {
+        setConversationId(null)
+        setMessages([])
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   function handleSend() {
     const text = input.trim()
     if (!text || ask.isPending) return
@@ -208,17 +251,61 @@ export default function ChatPage() {
             <p className="px-3 py-4 text-xs text-gray-400">No past conversations.</p>
           ) : (
             conversations.map(conv => (
-              <button
+              <div
                 key={conv.id}
-                onClick={() => switchConversation(conv.id)}
-                className={`w-full text-left px-3 py-2 text-xs truncate transition-colors ${
+                className={`group relative flex items-center px-3 py-2 text-xs transition-colors ${
                   conv.id === conversationId
                     ? 'bg-indigo-50 text-indigo-700 font-medium'
                     : 'text-gray-600 hover:bg-gray-50'
                 }`}
               >
-                {conv.title ?? `Chat ${new Date(conv.created_at).toLocaleDateString()}`}
-              </button>
+                {renamingId === conv.id ? (
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onBlur={() => handleRename(conv.id, renameValue)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') handleRename(conv.id, renameValue)
+                      if (e.key === 'Escape') setRenamingId(null)
+                    }}
+                    className="flex-1 min-w-0 text-xs bg-white border border-indigo-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-gray-800"
+                  />
+                ) : (
+                  <button
+                    onClick={() => switchConversation(conv.id)}
+                    className="flex-1 min-w-0 text-left truncate"
+                  >
+                    {conv.title ?? `Chat ${new Date(conv.created_at).toLocaleDateString()}`}
+                  </button>
+                )}
+                {renamingId !== conv.id && (
+                  <div className="hidden group-hover:flex items-center gap-1 ml-1 shrink-0">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation()
+                        setRenamingId(conv.id)
+                        setRenameValue(conv.title ?? '')
+                      }}
+                      title="Rename"
+                      className="text-gray-400 hover:text-indigo-600 transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H9v-2a2 2 0 01.586-1.414z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteConversation(conv.id) }}
+                      title="Delete"
+                      className="text-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+              </div>
             ))
           )}
         </div>
@@ -281,20 +368,39 @@ export default function ChatPage() {
         {/* Document selector */}
         {readyDocs.length > 0 && (
           <div className="px-4 py-2.5 bg-white border-b border-gray-200 flex items-center gap-3 flex-wrap">
-            <span className="text-xs text-gray-400 font-medium flex-shrink-0">
+            <span className="text-xs text-gray-400 font-medium shrink-0">
               {selectedDocs.size === 0 ? 'All docs' : `${selectedDocs.size} selected`}
             </span>
-            {readyDocs.map(doc => (
-              <label key={doc.id} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={selectedDocs.has(doc.id)}
-                  onChange={() => toggleDoc(doc.id)}
-                  className="accent-indigo-600"
-                />
-                <span className="truncate max-w-[160px]">{doc.filename}</span>
-              </label>
-            ))}
+            {readyDocs.map(doc => {
+              const isSelected = selectedDocs.has(doc.id)
+              const isPreviewing = previewDoc?.id === doc.id
+              return (
+                <div key={doc.id} className="flex items-center gap-1.5 text-xs text-gray-600 select-none">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleDoc(doc.id)}
+                    className="accent-indigo-600 cursor-pointer"
+                  />
+                  <button
+                    onClick={() => {
+                      if (!isSelected) {
+                        setSelectedDocs(prev => { const n = new Set(prev); n.add(doc.id); return n })
+                      }
+                      setPinnedPreviewId(doc.id)
+                    }}
+                    title={isSelected ? 'Click to preview this document' : 'Select and preview'}
+                    className={`truncate max-w-40 text-left transition-colors ${
+                      isPreviewing
+                        ? 'text-indigo-600 font-medium underline underline-offset-2'
+                        : 'hover:text-indigo-500'
+                    }`}
+                  >
+                    {doc.filename}
+                  </button>
+                </div>
+              )
+            })}
           </div>
         )}
 

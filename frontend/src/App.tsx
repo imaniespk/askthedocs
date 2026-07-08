@@ -70,7 +70,7 @@ function Nav() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-gray-50 flex flex-col">
+      <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
         <Nav />
         <main className="flex-1 flex flex-col overflow-hidden">
           <Routes>
