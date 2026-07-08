@@ -1,7 +1,9 @@
 import { useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import axios from 'axios'
+import client from '../api/client'
 
 const API = 'http://localhost:8000'
 const ACCEPTED = ['.pdf', '.docx', '.txt']
@@ -28,11 +30,12 @@ const badgeStyle: Record<Document['status'], string> = {
 
 export default function DocumentsPage() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['documents'],
-    queryFn: () => axios.get(`${API}/documents/`).then(r => r.data),
+    queryFn: () => client.get(`${API}/documents/`).then(r => r.data),
     refetchInterval: 5000,
   })
 
@@ -40,7 +43,7 @@ export default function DocumentsPage() {
     mutationFn: (file: File) => {
       const form = new FormData()
       form.append('file', file)
-      return axios.post(`${API}/documents/`, form)
+      return client.post(`${API}/documents/`, form)
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['documents'] })
@@ -56,8 +59,11 @@ export default function DocumentsPage() {
   })
 
   const remove = useMutation({
-    mutationFn: (id: string) => axios.delete(`${API}/documents/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['documents'] }),
+    mutationFn: (id: string) => client.delete(`${API}/documents/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Document deleted.')
+    },
   })
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -92,6 +98,20 @@ export default function DocumentsPage() {
           onChange={handleFileChange}
         />
       </div>
+
+      {documents.some(d => d.status === 'ready') && (
+        <div className="mb-5 flex items-center justify-between bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
+          <p className="text-sm text-indigo-700">
+            {documents.filter(d => d.status === 'ready').length} document{documents.filter(d => d.status === 'ready').length > 1 ? 's' : ''} ready — start asking questions.
+          </p>
+          <button
+            onClick={() => navigate('/chat')}
+            className="text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+          >
+            Go to Chat →
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
