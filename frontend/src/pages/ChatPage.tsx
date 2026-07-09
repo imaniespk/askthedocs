@@ -143,7 +143,7 @@ export default function ChatPage() {
         const res = await client.post(`${API}/conversations/`)
         convId = res.data.id
         setConversationId(convId)
-        setConversations(prev => [res.data, ...prev])
+        setConversations(prev => [{ ...res.data, title: question.slice(0, 60) }, ...prev])
       }
       const body: { question: string; document_ids?: string[] } = { question }
       if (selectedDocs.size > 0) body.document_ids = Array.from(selectedDocs)
