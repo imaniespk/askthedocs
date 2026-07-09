@@ -3,9 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import axios from 'axios'
-import client from '../api/client'
-
-const API = 'http://localhost:8000'
+import client, { API } from '../api/client'
 const ACCEPTED = ['.pdf', '.docx', '.txt']
 
 type Document = {
