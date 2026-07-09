@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    env: str = "development"
     cors_origins: str = "http://localhost:5173"
     database_url: str = ""
     max_upload_size_mb: int = 20
