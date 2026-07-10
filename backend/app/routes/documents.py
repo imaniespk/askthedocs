@@ -50,12 +50,22 @@ async def upload_document(
             detail=f"File exceeds {settings.max_upload_size_mb} MB limit.",
         )
 
+    pool = await get_pool()
+    existing = await pool.fetchrow(
+        "SELECT id FROM documents WHERE filename = $1 AND user_id = $2",
+        file.filename, user_id,
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f'"{file.filename}" is already uploaded. Delete it first or rename the file.',
+        )
+
     doc_id = uuid4()
     suffix = Path(file.filename).suffix.lower()
     file_path = UPLOAD_DIR / f"{doc_id}{suffix}"
     file_path.write_bytes(content)
 
-    pool = await get_pool()
     row = await pool.fetchrow(
         """
         INSERT INTO documents (id, filename, storage_path, size_bytes, status, user_id)
