@@ -16,7 +16,13 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title="AskTheDocs API", version="0.5.0", lifespan=lifespan)
+app = FastAPI(
+    title="AskTheDocs API",
+    version="0.6.0",
+    lifespan=lifespan,
+    docs_url=None if settings.env == "production" else "/docs",
+    redoc_url=None if settings.env == "production" else "/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -33,4 +39,4 @@ app.include_router(conversations.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.5.0"}
+    return {"status": "ok", "version": "0.6.0"}

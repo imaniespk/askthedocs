@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import client, { API } from '../api/client'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const redirected = location.state?.reason === 'auth'
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -33,6 +35,11 @@ export default function LoginPage() {
   return (
     <div className="min-h-[calc(100vh-57px)] flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+        {redirected && (
+          <div className="mb-5 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+            Please sign in to access that page.
+          </div>
+        )}
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Sign in</h1>
         <p className="text-sm text-gray-500 mb-6">Welcome back to AskTheDocs</p>
 

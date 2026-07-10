@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import HomePage from './pages/HomePage'
 import DocumentsPage from './pages/DocumentsPage'
@@ -67,6 +67,12 @@ function Nav() {
   )
 }
 
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const token = localStorage.getItem('token')
+  if (!token) return <Navigate to="/login" state={{ reason: 'auth' }} replace />
+  return <>{children}</>
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -75,8 +81,8 @@ export default function App() {
         <main className="flex-1 flex flex-col overflow-hidden">
           <Routes>
             <Route path="/" element={<HomePage />} />
-            <Route path="/documents" element={<DocumentsPage />} />
-            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/documents" element={<PrivateRoute><DocumentsPage /></PrivateRoute>} />
+            <Route path="/chat" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/about" element={<AboutPage />} />
