@@ -11,7 +11,10 @@ from app.routes import auth, conversations, documents
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.database_url:
-        await get_pool()
+        pool = await get_pool()
+        await pool.execute(
+            "UPDATE documents SET status = 'error' WHERE status = 'processing'"
+        )
     yield
     await close_pool()
 
