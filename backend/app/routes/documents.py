@@ -65,6 +65,7 @@ async def upload_document(
     suffix = Path(file.filename).suffix.lower()
     file_path = UPLOAD_DIR / f"{doc_id}{suffix}"
     file_path.write_bytes(content)
+    del content
 
     row = await pool.fetchrow(
         """
