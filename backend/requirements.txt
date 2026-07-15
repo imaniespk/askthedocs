@@ -22,3 +22,6 @@ passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 PyJWT==2.8.0
 mammoth==1.8.0
+
+# Week 8
+google-generativeai==0.8.3

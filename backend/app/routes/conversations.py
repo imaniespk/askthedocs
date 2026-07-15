@@ -1,7 +1,9 @@
+import asyncio
 from uuid import UUID
 
+import google.generativeai as genai
 from fastapi import APIRouter, Depends, HTTPException
-from openai import AsyncOpenAI
+from openai import APIStatusError, AsyncOpenAI, RateLimitError
 from pydantic import BaseModel
 
 from app.config import settings
@@ -11,6 +13,23 @@ from app.dependencies import get_current_user
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
 _openai = AsyncOpenAI(api_key=settings.openai_api_key)
+
+
+async def _generate_answer(prompt: str) -> str:
+    try:
+        completion = await _openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2,
+        )
+        return completion.choices[0].message.content.strip()
+    except (RateLimitError, APIStatusError):
+        if not settings.gemini_api_key:
+            raise
+        genai.configure(api_key=settings.gemini_api_key)
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = await asyncio.to_thread(model.generate_content, prompt)
+        return response.text.strip()
 
 TOP_K = 3
 
@@ -240,13 +259,7 @@ Question: {body.question}
 
 Answer:"""
 
-    completion = await _openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2,
-    )
-
-    answer = completion.choices[0].message.content.strip()
+    answer = await _generate_answer(prompt)
     found_in_docs = "couldn't find" not in answer.lower()
 
     await pool.execute(

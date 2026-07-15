@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     database_url: str = ""
     max_upload_size_mb: int = 10
     openai_api_key: str = ""
+    gemini_api_key: str = ""
     jwt_secret: str = ""
     jwt_expire_minutes: int = 60
 
