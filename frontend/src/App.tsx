@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import AboutPage from './pages/AboutPage'
 import PricingPage from './pages/PricingPage'
+import GroupsPage from './pages/GroupsPage'
 
 function Nav() {
   const location = useLocation()
@@ -34,6 +35,9 @@ function Nav() {
       </Link>
       <Link to="/chat" className={`${base} ${location.pathname === '/chat' ? active : inactive}`}>
         Chat
+      </Link>
+      <Link to="/groups" className={`${base} ${location.pathname === '/groups' ? active : inactive}`}>
+        Groups
       </Link>
       <Link to="/pricing" className={`${base} ${location.pathname === '/pricing' ? active : inactive}`}>
         Pricing
@@ -85,6 +89,7 @@ export default function App() {
             <Route path="/chat" element={<PrivateRoute><ChatPage /></PrivateRoute>} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/groups" element={<PrivateRoute><GroupsPage /></PrivateRoute>} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/pricing" element={<PricingPage />} />
           </Routes>

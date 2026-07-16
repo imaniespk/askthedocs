@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -30,6 +30,7 @@ export default function DocumentsPage() {
   const qc = useQueryClient()
   const navigate = useNavigate()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [search, setSearch] = useState('')
 
   const { data: documents = [], isLoading } = useQuery<Document[]>({
     queryKey: ['documents'],
@@ -111,13 +112,25 @@ export default function DocumentsPage() {
         </div>
       )}
 
+      {!isLoading && documents.length > 0 && (
+        <div className="mb-4">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search documents…"
+            className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+          />
+        </div>
+      )}
+
       {isLoading ? (
         <p className="text-gray-400 text-sm">Loading…</p>
       ) : documents.length === 0 ? (
         <p className="text-gray-400 text-sm">No documents yet. Upload a PDF, DOCX, or TXT to get started.</p>
       ) : (
         <ul className="divide-y divide-gray-200 bg-white rounded-xl border border-gray-200">
-          {documents.map(doc => (
+          {documents.filter(doc => doc.filename.toLowerCase().includes(search.toLowerCase())).map(doc => (
             <li key={doc.id} className="flex items-center justify-between px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
