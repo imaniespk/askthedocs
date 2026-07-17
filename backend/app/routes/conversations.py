@@ -248,10 +248,10 @@ async def ask_question(
                 TOP_K,
             )
         else:
-            # Fetch TOP_K chunks per document to guarantee coverage from each
+            # Fetch TOP_K chunks per document, then interleave so sources
+            # from each doc appear in the first N displayed citations
             per_doc_k = max(2, TOP_K)
-            seen = set()
-            all_chunks = []
+            per_doc_rows = []
             for doc_id in body.document_ids:
                 rows = await pool.fetch(
                     """
@@ -266,10 +266,16 @@ async def ask_question(
                     doc_id,
                     per_doc_k,
                 )
-                for r in rows:
-                    if r["id"] not in seen:
-                        seen.add(r["id"])
-                        all_chunks.append(r)
+                per_doc_rows.append(list(rows))
+            # Interleave: take one chunk from each doc in round-robin order
+            seen = set()
+            all_chunks = []
+            max_len = max(len(r) for r in per_doc_rows)
+            for i in range(max_len):
+                for doc_rows in per_doc_rows:
+                    if i < len(doc_rows) and doc_rows[i]["id"] not in seen:
+                        seen.add(doc_rows[i]["id"])
+                        all_chunks.append(doc_rows[i])
             chunk_rows = all_chunks
     else:
         chunk_rows = await pool.fetch(
