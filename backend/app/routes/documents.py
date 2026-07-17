@@ -96,10 +96,12 @@ async def list_documents(user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
     rows = await pool.fetch(
         """
-        SELECT id, filename, size_bytes, status, created_at
-        FROM documents
-        WHERE user_id = $1
-        ORDER BY created_at DESC
+        SELECT DISTINCT d.id, d.filename, d.size_bytes, d.status, d.created_at
+        FROM documents d
+        LEFT JOIN group_documents gd ON gd.document_id = d.id
+        LEFT JOIN group_members gm ON gm.group_id = gd.group_id AND gm.user_id = $1
+        WHERE d.user_id = $1 OR gm.user_id = $1
+        ORDER BY d.created_at DESC
         """,
         user_id,
     )
