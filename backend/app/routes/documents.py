@@ -115,14 +115,23 @@ async def list_documents(user_id: UUID = Depends(get_current_user)):
     ]
 
 
+GROUP_ACCESS_QUERY = """
+    SELECT storage_path, filename FROM documents
+    WHERE id = $1 AND (
+        user_id = $2
+        OR EXISTS (
+            SELECT 1 FROM group_documents gd
+            JOIN group_members gm ON gm.group_id = gd.group_id
+            WHERE gd.document_id = $1 AND gm.user_id = $2
+        )
+    )
+"""
+
+
 @router.get("/{document_id}/file")
 async def serve_file(document_id: UUID, user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
-    row = await pool.fetchrow(
-        "SELECT storage_path, filename FROM documents WHERE id = $1 AND user_id = $2",
-        document_id,
-        user_id,
-    )
+    row = await pool.fetchrow(GROUP_ACCESS_QUERY, document_id, user_id)
     if not row:
         raise HTTPException(status_code=404, detail="Document not found.")
 
@@ -141,11 +150,7 @@ async def serve_file(document_id: UUID, user_id: UUID = Depends(get_current_user
 @router.get("/{document_id}/content", response_model=ContentOut)
 async def get_content(document_id: UUID, user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
-    row = await pool.fetchrow(
-        "SELECT storage_path, filename FROM documents WHERE id = $1 AND user_id = $2",
-        document_id,
-        user_id,
-    )
+    row = await pool.fetchrow(GROUP_ACCESS_QUERY, document_id, user_id)
     if not row:
         raise HTTPException(status_code=404, detail="Document not found.")
 
