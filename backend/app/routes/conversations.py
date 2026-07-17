@@ -233,19 +233,44 @@ async def ask_question(
             TOP_K,
         )
     elif body.document_ids:
-        chunk_rows = await pool.fetch(
-            """
-            SELECT c.id, c.content, c.page_number, d.filename
-            FROM chunks c
-            JOIN documents d ON d.id = c.document_id
-            WHERE c.document_id = ANY($2::uuid[])
-            ORDER BY c.embedding <=> $1::vector
-            LIMIT $3
-            """,
-            q_vector_str,
-            body.document_ids,
-            TOP_K,
-        )
+        if len(body.document_ids) == 1:
+            chunk_rows = await pool.fetch(
+                """
+                SELECT c.id, c.content, c.page_number, d.filename
+                FROM chunks c
+                JOIN documents d ON d.id = c.document_id
+                WHERE c.document_id = $2
+                ORDER BY c.embedding <=> $1::vector
+                LIMIT $3
+                """,
+                q_vector_str,
+                body.document_ids[0],
+                TOP_K,
+            )
+        else:
+            # Fetch TOP_K chunks per document to guarantee coverage from each
+            per_doc_k = max(2, TOP_K)
+            seen = set()
+            all_chunks = []
+            for doc_id in body.document_ids:
+                rows = await pool.fetch(
+                    """
+                    SELECT c.id, c.content, c.page_number, d.filename
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE c.document_id = $2
+                    ORDER BY c.embedding <=> $1::vector
+                    LIMIT $3
+                    """,
+                    q_vector_str,
+                    doc_id,
+                    per_doc_k,
+                )
+                for r in rows:
+                    if r["id"] not in seen:
+                        seen.add(r["id"])
+                        all_chunks.append(r)
+            chunk_rows = all_chunks
     else:
         chunk_rows = await pool.fetch(
             """
