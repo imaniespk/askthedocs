@@ -47,6 +47,7 @@ class ConversationOut(BaseModel):
 class MessageIn(BaseModel):
     question: str
     document_ids: list[UUID] | None = None
+    group_id: UUID | None = None
 
 
 class SourceChunk(BaseModel):
@@ -209,7 +210,29 @@ async def ask_question(
     q_vector = embed_resp.data[0].embedding
     q_vector_str = f"[{','.join(str(x) for x in q_vector)}]"
 
-    if body.document_ids:
+    if body.group_id:
+        member = await pool.fetchrow(
+            "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
+            body.group_id,
+            user_id,
+        )
+        if not member:
+            raise HTTPException(status_code=403, detail="You are not a member of this group.")
+        chunk_rows = await pool.fetch(
+            """
+            SELECT c.id, c.content, c.page_number, d.filename
+            FROM chunks c
+            JOIN documents d ON d.id = c.document_id
+            JOIN group_documents gd ON gd.document_id = d.id
+            WHERE gd.group_id = $2
+            ORDER BY c.embedding <=> $1::vector
+            LIMIT $3
+            """,
+            q_vector_str,
+            body.group_id,
+            TOP_K,
+        )
+    elif body.document_ids:
         chunk_rows = await pool.fetch(
             """
             SELECT c.id, c.content, c.page_number, d.filename
