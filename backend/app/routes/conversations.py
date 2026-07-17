@@ -248,12 +248,23 @@ async def ask_question(
                 TOP_K,
             )
         else:
-            # Fetch TOP_K chunks per document, then interleave so sources
-            # from each doc appear in the first N displayed citations
+            # Per document: always include first chunk (title/author info)
+            # plus top similarity matches, then interleave across docs
             per_doc_k = max(2, TOP_K)
             per_doc_rows = []
             for doc_id in body.document_ids:
-                rows = await pool.fetch(
+                first_chunk = await pool.fetchrow(
+                    """
+                    SELECT c.id, c.content, c.page_number, d.filename
+                    FROM chunks c
+                    JOIN documents d ON d.id = c.document_id
+                    WHERE c.document_id = $1
+                    ORDER BY c.chunk_index ASC
+                    LIMIT 1
+                    """,
+                    doc_id,
+                )
+                similar = await pool.fetch(
                     """
                     SELECT c.id, c.content, c.page_number, d.filename
                     FROM chunks c
@@ -266,7 +277,16 @@ async def ask_question(
                     doc_id,
                     per_doc_k,
                 )
-                per_doc_rows.append(list(rows))
+                doc_chunks = []
+                seen_in_doc: set = set()
+                if first_chunk:
+                    doc_chunks.append(first_chunk)
+                    seen_in_doc.add(first_chunk["id"])
+                for r in similar:
+                    if r["id"] not in seen_in_doc:
+                        seen_in_doc.add(r["id"])
+                        doc_chunks.append(r)
+                per_doc_rows.append(doc_chunks)
             # Interleave: take one chunk from each doc in round-robin order
             seen = set()
             all_chunks = []
