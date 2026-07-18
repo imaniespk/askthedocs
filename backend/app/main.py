@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="AskTheDocs API",
-    version="0.8.0",
+    version="0.9.0",
     lifespan=lifespan,
     docs_url=None if settings.env == "production" else "/docs",
     redoc_url=None if settings.env == "production" else "/redoc",
@@ -43,4 +43,4 @@ app.include_router(groups.router)
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": "0.8.0"}
+    return {"status": "ok", "version": "0.9.0"}

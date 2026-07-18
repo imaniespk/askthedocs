@@ -119,6 +119,36 @@ async def update_title(
     return ConversationOut(id=row["id"], title=row["title"], created_at=str(row["created_at"]))
 
 
+@router.get("/{conversation_id}/export")
+async def export_conversation(conversation_id: UUID, user_id: UUID = Depends(get_current_user)):
+    from fastapi.responses import PlainTextResponse
+    pool = await get_pool()
+    conv = await pool.fetchrow(
+        "SELECT id, title, created_at FROM conversations WHERE id = $1 AND user_id = $2",
+        conversation_id,
+        user_id,
+    )
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    messages = await pool.fetch(
+        "SELECT role, content, created_at FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC",
+        conversation_id,
+    )
+    title = conv["title"] or f"Chat {conv['created_at'].strftime('%Y-%m-%d')}"
+    lines = [f"AskTheDocs — {title}", f"Exported: {conv['created_at'].strftime('%Y-%m-%d %H:%M UTC')}", "=" * 60, ""]
+    for m in messages:
+        speaker = "You" if m["role"] == "user" else "Assistant"
+        lines.append(f"{speaker}:")
+        lines.append(m["content"])
+        lines.append("")
+    content = "\n".join(lines)
+    filename = title.replace(" ", "_")[:50] + ".txt"
+    return PlainTextResponse(
+        content=content,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.delete("/{conversation_id}", status_code=204)
 async def delete_conversation(conversation_id: UUID, user_id: UUID = Depends(get_current_user)):
     pool = await get_pool()
