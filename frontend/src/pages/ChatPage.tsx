@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import DOMPurify from 'dompurify'
+import toast from 'react-hot-toast'
 import client, { API } from '../api/client'
 
 type Document = {
@@ -206,6 +207,22 @@ export default function ChatPage() {
     }
   }
 
+  async function handleExport(id: string) {
+    try {
+      const res = await client.get(`${API}/conversations/${id}/export`, { responseType: 'blob' })
+      const url = URL.createObjectURL(res.data)
+      const a = document.createElement('a')
+      a.href = url
+      const cd = res.headers['content-disposition'] as string | undefined
+      const match = cd?.match(/filename="(.+)"/)
+      a.download = match?.[1] ?? `conversation-${id.slice(0, 8)}.txt`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('Failed to export conversation.')
+    }
+  }
+
   function handleSend() {
     const text = input.trim()
     if (!text || ask.isPending) return
@@ -292,6 +309,15 @@ export default function ChatPage() {
                     >
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-1.414.586H9v-2a2 2 0 01.586-1.414z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={e => { e.stopPropagation(); handleExport(conv.id) }}
+                      title="Export"
+                      className="text-gray-400 hover:text-green-600 transition-colors"
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                       </svg>
                     </button>
                     <button
