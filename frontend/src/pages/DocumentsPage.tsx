@@ -72,6 +72,14 @@ export default function DocumentsPage() {
     enabled: groups.length > 0,
   })
 
+  // Map: docId → list of groups it's shared in
+  const docGroupMap = new Map<string, { groupName: string; ownerEmail: string }[]>()
+  for (const gd of sharedDocs) {
+    if (!docGroupMap.has(gd.id)) docGroupMap.set(gd.id, [])
+    docGroupMap.get(gd.id)!.push({ groupName: gd.group_name, ownerEmail: gd.owner_email })
+  }
+
+  // Docs from other members (not owned by current user)
   const myDocIds = new Set(documents.map(d => d.id))
   const filteredSharedDocs = sharedDocs
     .filter(d => !myDocIds.has(d.id))
@@ -173,7 +181,14 @@ export default function DocumentsPage() {
             <li key={doc.id} className="flex items-center justify-between px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
-                <p className="text-xs text-gray-400">{formatSize(doc.size_bytes)}</p>
+                <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                  <span className="text-xs text-gray-400">{formatSize(doc.size_bytes)}</span>
+                  {docGroupMap.get(doc.id)?.map(({ groupName, ownerEmail }) => (
+                    <span key={groupName} className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
+                      {groupName} · {ownerEmail.split('@')[0]}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="flex items-center gap-3 ml-4">
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${badgeStyle[doc.status]}`}>
