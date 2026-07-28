@@ -13,6 +13,20 @@ type Document = {
   status: 'pending' | 'processing' | 'ready' | 'error'
 }
 
+type Group = {
+  id: string
+  name: string
+}
+
+type GroupDocument = {
+  id: string
+  filename: string
+  size_bytes: number
+  status: string
+  owner_email: string
+  group_name: string
+}
+
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -37,6 +51,31 @@ export default function DocumentsPage() {
     queryFn: () => client.get(`${API}/documents/`).then(r => r.data),
     refetchInterval: 5000,
   })
+
+  const { data: groups = [] } = useQuery<Group[]>({
+    queryKey: ['groups'],
+    queryFn: () => client.get(`${API}/groups/`).then(r => r.data),
+  })
+
+  const { data: sharedDocs = [] } = useQuery<GroupDocument[]>({
+    queryKey: ['group-docs', groups.map(g => g.id).join(',')],
+    queryFn: async () => {
+      const results = await Promise.all(
+        groups.map(g =>
+          client.get(`${API}/groups/${g.id}/documents`).then(r =>
+            r.data.map((doc: Omit<GroupDocument, 'group_name'>) => ({ ...doc, group_name: g.name }))
+          )
+        )
+      )
+      return results.flat()
+    },
+    enabled: groups.length > 0,
+  })
+
+  const myDocIds = new Set(documents.map(d => d.id))
+  const filteredSharedDocs = sharedDocs
+    .filter(d => !myDocIds.has(d.id))
+    .filter(d => d.filename.toLowerCase().includes(search.toLowerCase()))
 
   const upload = useMutation({
     mutationFn: (file: File) => {
@@ -150,6 +189,32 @@ export default function DocumentsPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {filteredSharedDocs.length > 0 && (
+        <div className="mt-8">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Shared via groups</p>
+          <ul className="divide-y divide-gray-200 bg-white rounded-xl border border-gray-200">
+            {filteredSharedDocs.map((doc, i) => (
+              <li key={`${doc.id}-${i}`} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">{doc.filename}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-md font-medium">
+                      {doc.group_name}
+                    </span>
+                    <span className="text-xs text-gray-400">{doc.owner_email.split('@')[0]}</span>
+                    <span className="text-xs text-gray-300">·</span>
+                    <span className="text-xs text-gray-400">{formatSize(doc.size_bytes)}</span>
+                  </div>
+                </div>
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ml-4 ${badgeStyle[doc.status as Document['status']] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {doc.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   )

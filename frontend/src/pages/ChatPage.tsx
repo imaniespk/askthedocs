@@ -30,6 +30,41 @@ type Conversation = {
   created_at: string
 }
 
+function SourcesBlock({ sources }: { sources: Source[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="max-w-[85%] mt-1.5">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-500 transition-colors select-none"
+      >
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        {sources.length} source{sources.length > 1 ? 's' : ''}
+        <svg className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {sources.slice(0, 3).map(s => (
+            <div key={s.chunk_id} className="border-l-2 border-indigo-200 pl-3 py-0.5">
+              <p className="text-xs font-medium text-gray-600 truncate">
+                {s.filename}
+                <span className="text-gray-400 font-normal"> · p.{s.page_number}</span>
+              </p>
+              <p className="text-xs text-gray-400 italic line-clamp-2 mt-0.5">
+                &ldquo;{s.content.trim().slice(0, 160)}{s.content.length > 160 ? '…' : ''}&rdquo;
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 type PreviewState =
   | { type: 'loading' }
   | { type: 'pdf'; url: string }
@@ -452,18 +487,7 @@ export default function ChatPage() {
                   {msg.text}
                 </div>
                 {msg.sources && msg.sources.length > 0 && (
-                  <div className="space-y-1.5 mt-1 max-w-[85%]">
-                    {msg.sources.slice(0, 3).map(s => (
-                      <div key={s.chunk_id} className="text-xs text-gray-400 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
-                        <p className="font-medium text-gray-500 mb-0.5">
-                          📄 {s.filename} — page {s.page_number}
-                        </p>
-                        <p className="italic text-gray-400 line-clamp-2">
-                          "{s.content.trim().slice(0, 200)}{s.content.length > 200 ? '…' : ''}"
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                  <SourcesBlock sources={msg.sources} />
                 )}
               </div>
             ))
