@@ -30,6 +30,34 @@ type Conversation = {
   created_at: string
 }
 
+function MessageText({ text }: { text: string }) {
+  const paragraphs = text.split(/\n\n+/).filter(Boolean)
+  if (paragraphs.length <= 1) {
+    const lines = text.split('\n')
+    return (
+      <p>
+        {lines.map((line, i) => (
+          <span key={i}>{line}{i < lines.length - 1 && <br />}</span>
+        ))}
+      </p>
+    )
+  }
+  return (
+    <div className="space-y-3">
+      {paragraphs.map((para, i) => {
+        const lines = para.split('\n')
+        return (
+          <p key={i}>
+            {lines.map((line, j) => (
+              <span key={j}>{line}{j < lines.length - 1 && <br />}</span>
+            ))}
+          </p>
+        )
+      })}
+    </div>
+  )
+}
+
 function SourcesBlock({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false)
   return (
@@ -484,7 +512,7 @@ export default function ChatPage() {
                       : 'bg-white border border-gray-200 text-gray-900 rounded-bl-sm shadow-sm'
                   }`}
                 >
-                  {msg.text}
+                  {msg.role === 'assistant' ? <MessageText text={msg.text} /> : msg.text}
                 </div>
                 {msg.sources && msg.sources.length > 0 && (
                   <SourcesBlock sources={msg.sources} />
